@@ -1002,6 +1002,30 @@ void fill_25_copies(openrac_api &api) {
   };
 }
 
+// The fake host's 1.26 interfaces: one name, its version and table.
+std::string g_26_name;
+uint32_t g_26_version = 0;
+const void *g_26_table = nullptr;
+
+void fill_26(openrac_api &api) {
+  api.interface_provide = [](openrac_mod *, const char *name, uint32_t version,
+                             const void *table) {
+    if (name == nullptr || name[0] == '\0' || table == nullptr) {
+      return OPENRAC_HOOK_UNKNOWN;
+    }
+    g_26_name = name;
+    g_26_version = version;
+    g_26_table = table;
+    return OPENRAC_HOOK_OK;
+  };
+  api.interface_find = [](const char *name,
+                          uint32_t min_version) -> const void * {
+    return name != nullptr && g_26_name == name && g_26_version >= min_version
+               ? g_26_table
+               : nullptr;
+  };
+}
+
 // Returns a table of the fake host's functions, as a port of the newest interface would fill it.
 openrac_api make_api() {
     openrac_api api{};
@@ -2092,6 +2116,29 @@ int main() {
       api.api_minor = 24;
       CHECK(!mod.has_moby_copy() && mod.moby_copy_check(30) == OPENRAC_HOOK_UNKNOWN &&
             mod.moby_copy(30, 0) == -1);
+      api.api_minor = OPENRAC_MOD_API_MINOR;
+    }
+    // Interface 1.26: a table offered by name and found as its type.
+    {
+      struct Shared {
+        int value;
+      };
+      static const Shared shared{7};
+      fill_26(api);
+      CHECK(mod.has_interfaces() &&
+            mod.interface_provide("lib.items", 2, &shared));
+      CHECK(!mod.interface_provide<Shared>("", 1, &shared) &&
+            !mod.interface_provide<Shared>("lib.none", 1, nullptr));
+      const Shared *found = mod.interface_find<Shared>("lib.items", 2);
+      CHECK(found == &shared && found->value == 7);
+      CHECK(mod.interface_find<Shared>("lib.items", 3) == nullptr &&
+            mod.interface_find<Shared>("lib.other") == nullptr);
+
+      // A port of 1.25 has none of it.
+      api.api_minor = 25;
+      CHECK(!mod.has_interfaces() &&
+            !mod.interface_provide("lib.items", 2, &shared) &&
+            mod.interface_find<Shared>("lib.items") == nullptr);
       api.api_minor = OPENRAC_MOD_API_MINOR;
     }
     check_refused_loads(api, handle);

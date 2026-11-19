@@ -78,11 +78,12 @@ extern "C" {
  * included (hook_entry), 1.22 render-only reward models, guest text,
  * sprite tint and pickup presentations, 1.23 a render-only material for one
  * moby (moby_material: a tint, or platinum), 1.24 obsidian, a third
- * material for moby_material, and 1.25 energy, a fourth, which recolours the
+ * material for moby_material, 1.25 energy, a fourth, which recolours the
  * effects a moby draws, and copies of a level's placed enemies
- * (moby_copy_check, moby_copy).
+ * (moby_copy_check, moby_copy), and 1.26 tables mods offer each other by
+ * name (interface_provide, interface_find).
  */
-#define OPENRAC_MOD_API_MINOR 25
+#define OPENRAC_MOD_API_MINOR 26
 
 /* What collision_line tests (openrac_api.collision_line): the level's walls and
  * ground, the mobys (their collision meshes, and creatures' shapes on their
@@ -2383,6 +2384,28 @@ typedef struct openrac_api {
      * spawns. Returns the copy's slot, or OPENRAC_HOOK_UNKNOWN (not allowed, no clear spot, no
      * room). */
     int (*moby_copy)(openrac_mod* mod, int slot, int index);
+
+    /* Offers `table` to the other mods under `name` at `version` (since 1.26):
+     * a library mod's functions or data, which the mods built on it find with
+     * interface_find. The table is the mod's own and stays where it is until
+     * the mod is unloaded; what it holds and what `version` means are the two
+     * mods' agreement (a struct in a header the library mod publishes, its
+     * version grown as fields are added at its end). Mods unload in the reverse
+     * of their load order, so a mod that lists the library mod in its
+     * manifest's "requires" (which needs it loaded first) is unloaded before
+     * the table goes. Offering a name again replaces the mod's own offer.
+     * Returns OPENRAC_HOOK_OK, OPENRAC_HOOK_TAKEN when another mod offers
+     * `name`, or OPENRAC_HOOK_UNKNOWN for an empty name or one over 64 bytes,
+     * no table, or a call outside openrac_mod_load. A mod that fails to load
+     * takes its offers back. */
+    int (*interface_provide)(openrac_mod *mod, const char *name,
+                             uint32_t version, const void *table);
+
+    /* The table a mod offers under `name` (interface_provide), when its version
+     * is `min_version` or more (since 1.26); null when no loaded mod offers it
+     * or at an older version. A mod loaded before the library mod finds
+     * nothing during its own load: "requires" puts it after. At any time. */
+    const void *(*interface_find)(const char *name, uint32_t min_version);
 } openrac_api;
 
 /* ------------------------------------------------------------------------------------------ *
